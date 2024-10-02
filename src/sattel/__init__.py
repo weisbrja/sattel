@@ -22,31 +22,29 @@ def load_config_parser() -> configparser.ConfigParser:
     return parser
 
 
-def die(e: Exception, context=None):
-    log({"exception": type(e).__name__, "error": str(e), "context": context})
+def die(e: Exception):
+    log("error", {"exception": type(e).__name__, "error": str(e)})
     sys.exit(1)
 
 
-def log(obj):
-    print("sattel: " + json.dumps(obj))
+def log(kind: str, obj: dict):
+    obj["kind"] = kind
+    print(json.dumps(obj))
 
 
 def load_config() -> Config:
     try:
         return Config(load_config_parser())
-    except ConfigLoadError as e:
-        die(e, message=e.reason)
-    except ParserLoadError as e:
+    except (ConfigLoadError, ParserLoadError, Exception) as e:
         die(e)
 
 
-def get_pferd(json_input: str) -> Pferd:
-    data = json.loads(json_input)
+def get_pferd(config: Config, json_args: str) -> Pferd:
+    args = json.loads(json_args)
 
-    crawlers: Optional[List[str]] = data.get("crawlers", None)
-    skips: Optional[List[str]] = data.get("skips", None)
+    crawlers: Optional[List[str]] = args.get("crawlers", None)
+    skips: Optional[List[str]] = args.get("skips", None)
 
-    config = load_config()
     try:
         return Pferd(config, crawlers, skips)
     except PferdLoadError as e:
@@ -63,47 +61,52 @@ async def run(pferd: Pferd) -> None:
     for name in pferd._crawlers_to_run:
         crawler = pferd._crawlers[name]
 
-        print(f"running crawler {name}")
+        log("crawl", {"crawler": name})
 
         try:
             await crawler.run()
         except (CrawlError, AuthError) as e:
             die(e)
 
+global_id = 0
+
 
 class ProgressReport:
-    id = 0
-
-    def __init__(self):
-        self.progress = 0
+    def __init__(self, id: int):
         self.total = 0
-        self._id = ProgressReport.id
-        ProgressReport.id += 1
-        print(f"init bar {self._id}")
+        self.id = id
+        log("pr_add", {"id": id})
 
     def advance(self, amount: float = 1):
-        self.progress += amount
-        print(f"id={self._id} {self.progress}/{self.total}")
+        log("pr_advance", {"id": self.id, "amount": amount})
 
     def set_total(self, total: float):
-        self.new_total = total
-        print(f"id={self._id} total={self.total}")
+        self.total = total
+        log("pr_set_total", {"id": self.id, "total": total})
 
 
-def disable_log() -> None:
+def disable_log():
     def noop(*args, **kwargs):
         pass
 
     @contextmanager
     def bar(*args):
-        yield ProgressReport()
+        global global_id
+        try:
+            id = global_id
+            global_id += 1
+            yield ProgressReport(id)
+        finally:
+            log("pr_remove", {"id": id})
 
     pferd_log.print = noop
     pferd_log._bar = bar
 
 
 def main():
-    pferd = get_pferd(input())
+    config = load_config()
+    json_args = input()
+    pferd = get_pferd(config, json_args)
     disable_log()
     try:
         if os.name == "nt":
@@ -118,11 +121,11 @@ def main():
             loop.close()
         else:
             asyncio.run(run(pferd))
-    except (ConfigOptionError, AuthLoadError) as e:
+    except (ConfigOptionError, AuthLoadError, RuleParseError) as e:
         die(e)
-    except RuleParseError as e:
-        # TODO: e.pretty_print()
-        die(e)
-    else:
-        # TODO: pferd.print_report()
-        pass
+    # except RuleParseError as e:
+    #     TODO: e.pretty_print()
+    #     die(e)
+    # else:
+    #     TODO: pferd.print_report()
+    #     pass

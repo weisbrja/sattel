@@ -1,0 +1,19 @@
+[project]
+name = "sattel"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "pferd>=3.5.2"
+]
+
+[project.scripts]
+sattel = "sattel.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [
+    "pyinstaller>=6.10.0",
+]

@@ -5,8 +5,9 @@ import json
 import sys
 
 from contextlib import contextmanager
-from typing import List, Optional
+from typing import List, Optional, Iterator
 
+from PFERD.crawl.crawler import DownloadToken, CrawlToken
 from PFERD.transformer import RuleParseError
 from PFERD.logging import log as pferd_log
 from PFERD.crawl import CrawlError
@@ -23,13 +24,12 @@ def load_config_parser() -> configparser.ConfigParser:
 
 
 def die(e: Exception):
-    log("error", {"exception": type(e).__name__, "error": str(e)})
+    log({"kind": "error", "exception": type(e).__name__, "error": str(e)})
     sys.exit(1)
 
 
-def log(kind: str, obj: dict):
-    obj["kind"] = kind
-    print(json.dumps(obj))
+def log(obj: dict):
+    print(f"{json.dumps(obj)}")
 
 
 def load_config() -> Config:
@@ -61,53 +61,93 @@ async def run(pferd: Pferd) -> None:
     for name in pferd._crawlers_to_run:
         crawler = pferd._crawlers[name]
 
-        log("crawl", {"crawler": name})
+        log({"kind": "crawl", "crawler": name})
 
         try:
             await crawler.run()
-        except (CrawlError, AuthError) as e:
+        except (CrawlError, AuthError, Exception) as e:
             die(e)
 
-global_id = 0
 
+class DownloadBar:
+    id = 0
 
-class ProgressReport:
-    def __init__(self, id: int):
+    def __init__(self, path: str):
+        self.id = DownloadBar.id
+        DownloadBar.id += 1
         self.total = 0
-        self.id = id
-        log("pr_add", {"id": id})
+        self.progress = 0
+        log({"kind": "download_bar", "event": "begin",
+             "path": path, "id": self.id})
 
     def advance(self, amount: float = 1):
-        log("pr_advance", {"id": self.id, "amount": amount})
+        self.progress += amount
+        log({"kind": "download_bar", "event": "advance",
+            "progress": self.progress, "id": self.id})
 
     def set_total(self, total: float):
         self.total = total
-        log("pr_set_total", {"id": self.id, "total": total})
+        log({"kind": "download_bar", "event": "set_total",
+            "total": total, "id": self.id})
 
 
-def disable_log():
+class CrawlBar:
+    id = 0
+
+    def __init__(self, path: str):
+        self.id = CrawlBar.id
+        CrawlBar.id += 1
+        log({"kind": "crawl_bar", "event": "begin",
+             "path": path, "id": self.id})
+
+    def advance(self, amount: float = 1):
+        die(RuntimeError("advance should never be called on a crawl bar"))
+
+    def set_total(self, total: float):
+        die(RuntimeError("set_total should never be called on a crawl bar"))
+
+
+def patch_log():
     def noop(*args, **kwargs):
         pass
 
     @contextmanager
-    def bar(*args):
-        global global_id
+    def crawl_bar(path: str) -> Iterator[CrawlBar]:
+        bar = CrawlBar(path)
         try:
-            id = global_id
-            global_id += 1
-            yield ProgressReport(id)
+            yield bar
         finally:
-            log("pr_remove", {"id": id})
+            log({"kind": "crawl_bar", "event": "done", "id": bar.id})
+
+    @contextmanager
+    def download_bar(path: str) -> Iterator[DownloadBar]:
+        bar = DownloadBar(path)
+        try:
+            yield bar
+        finally:
+            log({"kind": "download_bar", "event": "done", "id": bar.id})
+
+    async def crawl_on_aenter(self) -> CrawlBar:
+        await self._stack.enter_async_context(self._limiter.limit_crawl())
+        bar = self._stack.enter_context(crawl_bar(str(self._path)))
+        return bar
+
+    async def download_on_aenter(self) -> DownloadBar:
+        await self._stack.enter_async_context(self._limiter.limit_download())
+        sink = await self._stack.enter_async_context(self._fs_token)
+        bar = self._stack.enter_context(download_bar(str(self._path)))
+        return bar, sink
 
     pferd_log.print = noop
-    pferd_log._bar = bar
+    CrawlToken._on_aenter = crawl_on_aenter
+    DownloadToken._on_aenter = download_on_aenter
 
 
 def main():
     config = load_config()
     json_args = input()
     pferd = get_pferd(config, json_args)
-    disable_log()
+    patch_log()
     try:
         if os.name == "nt":
             # A "workaround" for the windows event loop somehow crashing after

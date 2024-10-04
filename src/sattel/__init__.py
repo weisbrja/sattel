@@ -93,7 +93,7 @@ class ProgressBar:
             "id": self.id,
             "event": {
                 "kind": "begin",
-                "path": path,
+                "path": path[1:-1],
             }
         })
 

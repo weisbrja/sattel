@@ -6,7 +6,7 @@ import sys
 import keyring
 
 from contextlib import contextmanager
-from typing import List, Optional, Iterator, Tuple
+from typing import List, Optional, Iterator, Tuple, ContextManager
 
 from PFERD.transformer import RuleParseError
 from PFERD.utils import in_daemon_thread
@@ -27,7 +27,11 @@ def load_config_parser() -> configparser.ConfigParser:
 
 
 def die(e: Exception):
-    log({"kind": "error", "exception": type(e).__name__, "error": str(e)})
+    log({
+        "kind": "error",
+        "exception": type(e).__name__,
+        "message": str(e)
+    })
     sys.exit(1)
 
 
@@ -64,7 +68,10 @@ async def run(pferd: Pferd) -> None:
     for name in pferd._crawlers_to_run:
         crawler = pferd._crawlers[name]
 
-        log({"kind": "crawl", "crawler": name})
+        log({
+            "kind": "crawl",
+            "crawler": name
+        })
 
         try:
             await crawler.run()
@@ -72,42 +79,45 @@ async def run(pferd: Pferd) -> None:
             die(e)
 
 
-class DownloadBar:
+class ProgressBar:
     id = 0
 
-    def __init__(self, path: str):
-        self.id = DownloadBar.id
-        DownloadBar.id += 1
+    def __init__(self, kind: str, path: str):
+        self.kind = kind + "Bar"
+        self.id = ProgressBar.id
+        ProgressBar.id += 1
         self.total = 0
         self.progress = 0
-        log({"kind": "download_bar", "event": "begin",
-             "path": path, "id": self.id})
+        log({
+            "kind": self.kind,
+            "id": self.id,
+            "event": {
+                "kind": "begin",
+                "path": path,
+            }
+        })
 
     def advance(self, amount: float = 1):
         self.progress += amount
-        log({"kind": "download_bar", "event": "advance",
-            "progress": self.progress, "id": self.id})
+        log({
+            "kind": self.kind,
+            "id": self.id,
+            "event": {
+                "kind": "advance",
+                "progress": self.progress
+            }
+        })
 
     def set_total(self, total: float):
         self.total = total
-        log({"kind": "download_bar", "event": "set_total",
-            "total": total, "id": self.id})
-
-
-class CrawlBar:
-    id = 0
-
-    def __init__(self, path: str):
-        self.id = CrawlBar.id
-        CrawlBar.id += 1
-        log({"kind": "crawl_bar", "event": "begin",
-             "path": path, "id": self.id})
-
-    def advance(self, amount: float = 1):
-        die(RuntimeError("advance should never be called on a crawl bar"))
-
-    def set_total(self, total: float):
-        die(RuntimeError("set_total should never be called on a crawl bar"))
+        log({
+            "kind": self.kind,
+            "id": self.id,
+            "event": {
+                "kind": "setTotal",
+                "total": total
+            }
+        })
 
 
 def quiet_pferd():
@@ -115,37 +125,42 @@ def quiet_pferd():
         pass
 
     @contextmanager
-    def crawl_bar(
-        self,
-        action: str,
+    def progress_bar(
+        kind: str,
         path: str,
-    ) -> Iterator[CrawlBar]:
-        bar = CrawlBar(path)
+    ) -> Iterator[ProgressBar]:
+        bar = ProgressBar(kind, path)
         try:
             yield bar
         finally:
-            log({"kind": "crawl_bar", "event": "done", "id": bar.id})
+            log({
+                "kind": bar.kind,
+                "id": bar.id,
+                "event": {
+                    "kind": "done"
+                }
+            })
 
-    @contextmanager
-    def download_bar(
-            self,
-            action: str,
-            path: str,
-    ) -> Iterator[DownloadBar]:
-        bar = DownloadBar(path)
-        try:
-            yield bar
-        finally:
-            log({"kind": "download_bar", "event": "done", "id": bar.id})
+    def crawl_bar(self, action: str, path: str) -> ContextManager[ProgressBar]:
+        return progress_bar("crawl", path)
+
+    def download_bar(self, action: str, path: str) -> ContextManager[ProgressBar]:
+        return progress_bar("download", path)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("Exclusive log output can't be used.")
 
     pferd_log.print = noop
-    pferd_log._bar = noop
     pferd_log.download_bar = download_bar
     pferd_log.crawl_bar = crawl_bar
+    pferd_log.exclusive_output = fail
 
 
 def request(subject: str):
-    log({"kind": "request", "subject": subject})
+    log({
+        "kind": "request",
+        "subject": subject
+    })
     return input()
 
 
@@ -175,16 +190,16 @@ class SattelAuthenticator(KeyringAuthenticator):
         return self._username, self._password
 
     def invalidate_credentials(self) -> None:
-        log({"kind": "login_failed"})
+        log({
+            "kind": "loginFailed"
+        })
         super().invalidate_credentials()
 
     def invalidate_username(self) -> None:
         super().invalidate_username()
-        log({"kind": "invalidate_username"})
 
     def invalidate_password(self) -> None:
         super().invalidate_password()
-        log({"kind": "invalidate_password"})
 
 
 AUTHENTICATORS["sattel"] = lambda n, s, c: SattelAuthenticator(

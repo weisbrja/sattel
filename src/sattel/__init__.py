@@ -3,16 +3,19 @@ import configparser
 import os
 import json
 import sys
+import keyring
 
 from contextlib import contextmanager
-from typing import List, Optional, Iterator
+from typing import List, Optional, Iterator, Tuple
 
-from PFERD.crawl.crawler import DownloadToken, CrawlToken
 from PFERD.transformer import RuleParseError
+from PFERD.utils import in_daemon_thread
 from PFERD.logging import log as pferd_log
+from PFERD.auth.keyring import KeyringAuthSection
+from PFERD.auth import (AUTHENTICATORS, KeyringAuthenticator,
+                        AuthLoadError, AuthError)
 from PFERD.crawl import CrawlError
 from PFERD.pferd import Pferd, PferdLoadError
-from PFERD.auth import AuthLoadError, AuthError
 from PFERD.cli import ParserLoadError
 from PFERD.config import Config, ConfigLoadError, ConfigOptionError
 
@@ -29,7 +32,7 @@ def die(e: Exception):
 
 
 def log(obj: dict):
-    print(f"{json.dumps(obj)}")
+    print(f"{json.dumps(obj, ensure_ascii=False)}")
 
 
 def load_config() -> Config:
@@ -107,12 +110,16 @@ class CrawlBar:
         die(RuntimeError("set_total should never be called on a crawl bar"))
 
 
-def patch_log():
+def quiet_pferd():
     def noop(*args, **kwargs):
         pass
 
     @contextmanager
-    def crawl_bar(path: str) -> Iterator[CrawlBar]:
+    def crawl_bar(
+        self,
+        action: str,
+        path: str,
+    ) -> Iterator[CrawlBar]:
         bar = CrawlBar(path)
         try:
             yield bar
@@ -120,34 +127,75 @@ def patch_log():
             log({"kind": "crawl_bar", "event": "done", "id": bar.id})
 
     @contextmanager
-    def download_bar(path: str) -> Iterator[DownloadBar]:
+    def download_bar(
+            self,
+            action: str,
+            path: str,
+    ) -> Iterator[DownloadBar]:
         bar = DownloadBar(path)
         try:
             yield bar
         finally:
             log({"kind": "download_bar", "event": "done", "id": bar.id})
 
-    async def crawl_on_aenter(self) -> CrawlBar:
-        await self._stack.enter_async_context(self._limiter.limit_crawl())
-        bar = self._stack.enter_context(crawl_bar(str(self._path)))
-        return bar
-
-    async def download_on_aenter(self) -> DownloadBar:
-        await self._stack.enter_async_context(self._limiter.limit_download())
-        sink = await self._stack.enter_async_context(self._fs_token)
-        bar = self._stack.enter_context(download_bar(str(self._path)))
-        return bar, sink
-
     pferd_log.print = noop
-    CrawlToken._on_aenter = crawl_on_aenter
-    DownloadToken._on_aenter = download_on_aenter
+    pferd_log._bar = noop
+    pferd_log.download_bar = download_bar
+    pferd_log.crawl_bar = crawl_bar
+
+
+def request(subject: str):
+    log({"kind": "request", "subject": subject})
+    return input()
+
+
+class SattelAuthenticator(KeyringAuthenticator):
+    def __init__(self, name: str, section: KeyringAuthSection):
+        super().__init__(name, section)
+
+    async def credentials(self) -> Tuple[str, str]:
+        # request the username
+        if self._username is None:
+            self._username = await in_daemon_thread(lambda: request("username"))
+
+        # first try looking up the password in the keyring.
+        # do not look it up if it was invalidated - we want to re-prompt in this case
+        if self._password is None and not self._password_invalidated:
+            self._password = keyring.get_password(
+                self._keyring_name, self._username)
+
+        # if that fails it wasn't saved in the keyring - we need to
+        # read it from the user and store it
+        if self._password is None:
+            self._password = await in_daemon_thread(lambda: request("password"))
+            keyring.set_password(self._keyring_name,
+                                 self._username, self._password)
+
+        self._password_invalidated = False
+        return self._username, self._password
+
+    def invalidate_credentials(self) -> None:
+        log({"kind": "login_failed"})
+        super().invalidate_credentials()
+
+    def invalidate_username(self) -> None:
+        super().invalidate_username()
+        log({"kind": "invalidate_username"})
+
+    def invalidate_password(self) -> None:
+        super().invalidate_password()
+        log({"kind": "invalidate_password"})
+
+
+AUTHENTICATORS["sattel"] = lambda n, s, c: SattelAuthenticator(
+    n, KeyringAuthSection(s))
 
 
 def main():
     config = load_config()
     json_args = input()
     pferd = get_pferd(config, json_args)
-    patch_log()
+    quiet_pferd()
     try:
         if os.name == "nt":
             # A "workaround" for the windows event loop somehow crashing after
@@ -161,7 +209,7 @@ def main():
             loop.close()
         else:
             asyncio.run(run(pferd))
-    except (ConfigOptionError, AuthLoadError, RuleParseError) as e:
+    except (ConfigOptionError, AuthLoadError, RuleParseError, Exception) as e:
         die(e)
     # except RuleParseError as e:
     #     TODO: e.pretty_print()

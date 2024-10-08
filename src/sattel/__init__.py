@@ -30,7 +30,10 @@ def die(e: Exception):
 
 
 def log(obj: dict):
-    print(f"{json.dumps(obj, ensure_ascii=False)}", flush=True)
+    try:
+        print(f"{json.dumps(obj, ensure_ascii=False)}", flush=True)
+    except Exception:
+        pass
 
 
 def load_config_parser() -> configparser.ConfigParser:
@@ -69,8 +72,8 @@ async def run(pferd: Pferd) -> None:
         crawler = pferd._crawlers[name]
 
         log({
-            "kind": "crawler",
-            "crawler": name
+            "kind": "crawl",
+            "name": name.removeprefix("crawl:")
         })
         log({
             "kind": "info",
@@ -169,7 +172,10 @@ def request(subject: str):
         "kind": "request",
         "subject": subject
     })
-    return input()
+    try:
+        return input()
+    except Exception:
+        pass
 
 
 class SattelAuthenticator(KeyringAuthenticator):

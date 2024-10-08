@@ -20,12 +20,6 @@ from PFERD.cli import ParserLoadError
 from PFERD.config import Config, ConfigLoadError, ConfigOptionError
 
 
-def load_config_parser() -> configparser.ConfigParser:
-    parser = configparser.ConfigParser(interpolation=None)
-    Config.load_parser(parser)
-    return parser
-
-
 def die(e: Exception):
     log({
         "kind": "error",
@@ -36,7 +30,13 @@ def die(e: Exception):
 
 
 def log(obj: dict):
-    print(f"{json.dumps(obj, ensure_ascii=False)}")
+    print(f"{json.dumps(obj, ensure_ascii=False)}", flush=True)
+
+
+def load_config_parser() -> configparser.ConfigParser:
+    parser = configparser.ConfigParser(interpolation=None)
+    Config.load_parser(parser)
+    return parser
 
 
 def load_config() -> Config:
@@ -69,8 +69,12 @@ async def run(pferd: Pferd) -> None:
         crawler = pferd._crawlers[name]
 
         log({
-            "kind": "crawl",
+            "kind": "crawler",
             "crawler": name
+        })
+        log({
+            "kind": "info",
+            "info": "starting crawler"
         })
 
         try:
@@ -83,16 +87,16 @@ class ProgressBar:
     id = 0
 
     def __init__(self, kind: str, path: str):
-        self.kind = kind + "Bar"
         self.id = ProgressBar.id
         ProgressBar.id += 1
         self.total = 0
         self.progress = 0
         log({
-            "kind": self.kind,
+            "kind": "progressBar",
             "id": self.id,
             "event": {
                 "kind": "begin",
+                "bar": kind,
                 "path": path[1:-1],
             }
         })
@@ -100,7 +104,7 @@ class ProgressBar:
     def advance(self, amount: float = 1):
         self.progress += amount
         log({
-            "kind": self.kind,
+            "kind": "progressBar",
             "id": self.id,
             "event": {
                 "kind": "advance",
@@ -111,7 +115,7 @@ class ProgressBar:
     def set_total(self, total: float):
         self.total = total
         log({
-            "kind": self.kind,
+            "kind": "progressBar",
             "id": self.id,
             "event": {
                 "kind": "setTotal",
@@ -134,7 +138,7 @@ def quiet_pferd():
             yield bar
         finally:
             log({
-                "kind": bar.kind,
+                "kind": "progressBar",
                 "id": bar.id,
                 "event": {
                     "kind": "done"
@@ -157,6 +161,10 @@ def quiet_pferd():
 
 
 def request(subject: str):
+    log({
+        "kind": "info",
+        "info": f"requesting {subject}"
+    })
     log({
         "kind": "request",
         "subject": subject
@@ -208,9 +216,21 @@ AUTHENTICATORS["sattel"] = lambda n, s, c: SattelAuthenticator(
 
 def main():
     config = load_config()
-    json_args = input()
+    log({
+        "kind": "info",
+        "info": "loaded pferd config"
+    })
+    json_args = request("jsonArgs")
+    log({
+        "kind": "info",
+        "info": f"got json args {json_args}"
+    })
     pferd = get_pferd(config, json_args)
     quiet_pferd()
+    log({
+        "kind": "info",
+        "info": "starting pferd"
+    })
     try:
         if os.name == "nt":
             # A "workaround" for the windows event loop somehow crashing after

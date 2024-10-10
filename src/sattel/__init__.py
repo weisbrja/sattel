@@ -5,6 +5,7 @@ import json
 import sys
 import keyring
 
+from pathlib import Path
 from contextlib import contextmanager
 from typing import List, Optional, Iterator, Tuple, ContextManager
 
@@ -36,15 +37,15 @@ def log(obj: dict):
         pass
 
 
-def load_config_parser() -> configparser.ConfigParser:
+def load_config_parser(path: Optional[Path] = None) -> configparser.ConfigParser:
     parser = configparser.ConfigParser(interpolation=None)
-    Config.load_parser(parser)
+    Config.load_parser(parser, path)
     return parser
 
 
-def load_config() -> Config:
+def load_config(path: Optional[Path] = None) -> Config:
     try:
-        return Config(load_config_parser())
+        return Config(load_config_parser(path))
     except (ConfigLoadError, ParserLoadError, Exception) as e:
         die(e)
 
@@ -221,7 +222,14 @@ AUTHENTICATORS["sattel"] = lambda n, s, c: SattelAuthenticator(
 
 
 def main():
-    config = load_config()
+    config_file_path = request("configFilePath")
+    if not config_file_path:
+        config_file_path = None
+    log({
+        "kind": "info",
+        "info": f"got config file path {config_file_path}"
+    })
+    config = load_config(config_file_path)
     log({
         "kind": "info",
         "info": "loaded pferd config"

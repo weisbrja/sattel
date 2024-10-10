@@ -1,4 +1,4 @@
-# Python-generated files
+# python
 __pycache__/
 *.py[oc]
 build/
@@ -6,5 +6,8 @@ dist/
 wheels/
 *.egg-info
 
-# Virtual environments
+# pyinstaller
+sattel.spec
+
+# virtual environments
 .venv

@@ -227,7 +227,7 @@ def main():
     if not config_file_path:
         config_file_path = None
     else:
-        config_file_path = Path(config_file_path).expanduser()
+        config_file_path = Path(config_file_path)  # .expanduser()
     log({
         "kind": "log",
         "info": f"got \"configFilePath\": \"{config_file_path}\""

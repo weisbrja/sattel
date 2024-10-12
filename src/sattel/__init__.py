@@ -72,13 +72,14 @@ async def run(pferd: Pferd) -> None:
     for name in pferd._crawlers_to_run:
         crawler = pferd._crawlers[name]
 
+        crawler_name = name.removeprefix("crawl:")
         log({
             "kind": "crawl",
-            "name": name.removeprefix("crawl:")
+            "name": crawler_name
         })
         log({
-            "kind": "info",
-            "info": "starting crawler"
+            "kind": "log",
+            "info": f"run crawler \"{crawler_name}\""
         })
 
         try:
@@ -166,8 +167,8 @@ def quiet_pferd():
 
 def request(subject: str):
     log({
-        "kind": "info",
-        "info": f"requesting {subject}"
+        "kind": "log",
+        "info": f"requesting \"{subject}\""
     })
     log({
         "kind": "request",
@@ -225,25 +226,28 @@ def main():
     config_file_path = request("configFilePath")
     if not config_file_path:
         config_file_path = None
+    else:
+        config_file_path = Path(config_file_path).expanduser()
     log({
-        "kind": "info",
-        "info": f"got config file path {config_file_path}"
+        "kind": "log",
+        "info": f"got \"configFilePath\": \"{config_file_path}\""
     })
     config = load_config(config_file_path)
+    # FIXME: why does sattel pause here?
     log({
-        "kind": "info",
+        "kind": "log",
         "info": "loaded pferd config"
     })
     json_args = request("jsonArgs")
     log({
-        "kind": "info",
-        "info": f"got json args {json_args}"
+        "kind": "log",
+        "info": f"got \"jsonArgs\": \"{json_args}\""
     })
     pferd = get_pferd(config, json_args)
     quiet_pferd()
     log({
-        "kind": "info",
-        "info": "starting pferd"
+        "kind": "log",
+        "info": "run pferd"
     })
     try:
         if os.name == "nt":

@@ -13,8 +13,7 @@ from PFERD.transformer import RuleParseError
 from PFERD.utils import in_daemon_thread
 from PFERD.logging import log as pferd_log
 from PFERD.auth.keyring import KeyringAuthSection
-from PFERD.auth import (AUTHENTICATORS, KeyringAuthenticator,
-                        AuthLoadError, AuthError)
+from PFERD.auth import AUTHENTICATORS, KeyringAuthenticator, AuthLoadError, AuthError
 from PFERD.crawl import CrawlError
 from PFERD.pferd import Pferd, PferdLoadError
 from PFERD.cli import ParserLoadError
@@ -22,11 +21,7 @@ from PFERD.config import Config, ConfigLoadError, ConfigOptionError
 
 
 def die(e: Exception):
-    log({
-        "kind": "error",
-        "exception": type(e).__name__,
-        "message": str(e)
-    })
+    log({"kind": "error", "exception": type(e).__name__, "message": str(e)})
     sys.exit(1)
 
 
@@ -72,14 +67,8 @@ async def run(pferd: Pferd) -> None:
     for name in pferd._crawlers_to_run:
         crawler = pferd._crawlers[name]
 
-        log({
-            "kind": "crawl",
-            "name": name.removeprefix("crawl:")
-        })
-        log({
-            "kind": "info",
-            "info": "starting crawler"
-        })
+        log({"kind": "crawl", "name": name.removeprefix("crawl:")})
+        log({"kind": "info", "info": "starting crawler"})
 
         try:
             await crawler.run()
@@ -95,37 +84,37 @@ class ProgressBar:
         ProgressBar.id += 1
         self.total = 0
         self.progress = 0
-        log({
-            "kind": "progressBar",
-            "id": self.id,
-            "event": {
-                "kind": "begin",
-                "bar": kind,
-                "path": path[1:-1],
+        log(
+            {
+                "kind": "progressBar",
+                "id": self.id,
+                "event": {
+                    "kind": "begin",
+                    "bar": kind,
+                    "path": path[1:-1],
+                },
             }
-        })
+        )
 
     def advance(self, amount: float = 1):
         self.progress += amount
-        log({
-            "kind": "progressBar",
-            "id": self.id,
-            "event": {
-                "kind": "advance",
-                "progress": self.progress
+        log(
+            {
+                "kind": "progressBar",
+                "id": self.id,
+                "event": {"kind": "advance", "progress": self.progress},
             }
-        })
+        )
 
     def set_total(self, total: float):
         self.total = total
-        log({
-            "kind": "progressBar",
-            "id": self.id,
-            "event": {
-                "kind": "setTotal",
-                "total": total
+        log(
+            {
+                "kind": "progressBar",
+                "id": self.id,
+                "event": {"kind": "setTotal", "total": total},
             }
-        })
+        )
 
 
 def quiet_pferd():
@@ -141,13 +130,7 @@ def quiet_pferd():
         try:
             yield bar
         finally:
-            log({
-                "kind": "progressBar",
-                "id": bar.id,
-                "event": {
-                    "kind": "done"
-                }
-            })
+            log({"kind": "progressBar", "id": bar.id, "event": {"kind": "done"}})
 
     def crawl_bar(self, action: str, path: str) -> ContextManager[ProgressBar]:
         return progress_bar("crawl", path)
@@ -165,14 +148,8 @@ def quiet_pferd():
 
 
 def request(subject: str):
-    log({
-        "kind": "info",
-        "info": f"requesting {subject}"
-    })
-    log({
-        "kind": "request",
-        "subject": subject
-    })
+    log({"kind": "info", "info": f"requesting {subject}"})
+    log({"kind": "request", "subject": subject})
     try:
         return input()
     except Exception:
@@ -191,23 +168,19 @@ class SattelAuthenticator(KeyringAuthenticator):
         # first try looking up the password in the keyring.
         # do not look it up if it was invalidated - we want to re-prompt in this case
         if self._password is None and not self._password_invalidated:
-            self._password = keyring.get_password(
-                self._keyring_name, self._username)
+            self._password = keyring.get_password(self._keyring_name, self._username)
 
         # if that fails it wasn't saved in the keyring - we need to
         # read it from the user and store it
         if self._password is None:
             self._password = await in_daemon_thread(lambda: request("password"))
-            keyring.set_password(self._keyring_name,
-                                 self._username, self._password)
+            keyring.set_password(self._keyring_name, self._username, self._password)
 
         self._password_invalidated = False
         return self._username, self._password
 
     def invalidate_credentials(self) -> None:
-        log({
-            "kind": "loginFailed"
-        })
+        log({"kind": "loginFailed"})
         super().invalidate_credentials()
 
     def invalidate_username(self) -> None:
@@ -217,34 +190,21 @@ class SattelAuthenticator(KeyringAuthenticator):
         super().invalidate_password()
 
 
-AUTHENTICATORS["sattel"] = lambda n, s, c: SattelAuthenticator(
-    n, KeyringAuthSection(s))
+AUTHENTICATORS["sattel"] = lambda n, s, c: SattelAuthenticator(n, KeyringAuthSection(s))
 
 
 def main():
     config_file_path = request("configFilePath")
     if not config_file_path:
         config_file_path = None
-    log({
-        "kind": "info",
-        "info": f"got config file path {config_file_path}"
-    })
+    log({"kind": "info", "info": f"got config file path {config_file_path}"})
     config = load_config(config_file_path)
-    log({
-        "kind": "info",
-        "info": "loaded pferd config"
-    })
+    log({"kind": "info", "info": "loaded pferd config"})
     json_args = request("jsonArgs")
-    log({
-        "kind": "info",
-        "info": f"got json args {json_args}"
-    })
+    log({"kind": "info", "info": f"got json args {json_args}"})
     pferd = get_pferd(config, json_args)
     quiet_pferd()
-    log({
-        "kind": "info",
-        "info": "starting pferd"
-    })
+    log({"kind": "info", "info": "starting pferd"})
     try:
         if os.name == "nt":
             # A "workaround" for the windows event loop somehow crashing after

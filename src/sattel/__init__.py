@@ -67,8 +67,9 @@ async def run(pferd: Pferd) -> None:
     for name in pferd._crawlers_to_run:
         crawler = pferd._crawlers[name]
 
-        log({"kind": "crawl", "name": name.removeprefix("crawl:")})
-        log({"kind": "info", "info": "starting crawler"})
+        crawler_name = name.removeprefix("crawl:")
+        log({"kind": "crawl", "name": crawler_name})
+        log({"kind": "log", "info": f'run crawler "{crawler_name}"'})
 
         try:
             await crawler.run()
@@ -148,7 +149,7 @@ def quiet_pferd():
 
 
 def request(subject: str):
-    log({"kind": "info", "info": f"requesting {subject}"})
+    log({"kind": "log", "info": f'requesting "{subject}"'})
     log({"kind": "request", "subject": subject})
     try:
         return input()
@@ -197,14 +198,17 @@ def main():
     config_file_path = request("configFilePath")
     if not config_file_path:
         config_file_path = None
-    log({"kind": "info", "info": f"got config file path {config_file_path}"})
+    else:
+        config_file_path = Path(config_file_path)  # .expanduser()
+    log({"kind": "log", "info": f'got "configFilePath": "{config_file_path}"'})
     config = load_config(config_file_path)
-    log({"kind": "info", "info": "loaded pferd config"})
+    # FIXME: why does sattel pause here?
+    log({"kind": "log", "info": "loaded pferd config"})
     json_args = request("jsonArgs")
-    log({"kind": "info", "info": f"got json args {json_args}"})
+    log({"kind": "log", "info": f'got "jsonArgs": "{json_args}"'})
     pferd = get_pferd(config, json_args)
     quiet_pferd()
-    log({"kind": "info", "info": "starting pferd"})
+    log({"kind": "log", "info": "run pferd"})
     try:
         if os.name == "nt":
             # A "workaround" for the windows event loop somehow crashing after

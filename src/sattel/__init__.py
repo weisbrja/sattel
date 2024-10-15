@@ -194,18 +194,21 @@ AUTHENTICATORS["sattel"] = lambda n, s, c: SattelAuthenticator(n, KeyringAuthSec
 
 
 def main():
-    config_file_path = request("configFilePath")
-    if not config_file_path:
-        config_file_path = None
-    else:
-        config_file_path = Path(config_file_path)  # .expanduser()
+    argc = len(sys.argv)
+    if argc <= 1:
+        sys.exit(2)
+    json_args = sys.argv[1]
+    config_file_path = Path(sys.argv[2]) if argc > 2 else None
+
+    log({"kind": "log", "info": f'got "jsonArgs": "{json_args}"'})
     log({"kind": "log", "info": f'got "configFilePath": "{config_file_path}"'})
+
     config = load_config(config_file_path)
     log({"kind": "log", "info": "loaded pferd config"})
-    json_args = request("jsonArgs")
-    log({"kind": "log", "info": f'got "jsonArgs": "{json_args}"'})
+
     pferd = get_pferd(config, json_args)
     quiet_pferd()
+
     log({"kind": "log", "info": "run pferd"})
     try:
         if os.name == "nt":
@@ -222,6 +225,7 @@ def main():
             asyncio.run(run(pferd))
     except (ConfigOptionError, AuthLoadError, RuleParseError, Exception) as e:
         die(e)
+
     log({"kind": "done"})
     # except RuleParseError as e:
     #     TODO: e.pretty_print()

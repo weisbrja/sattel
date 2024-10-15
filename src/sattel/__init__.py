@@ -58,9 +58,8 @@ def get_pferd(config: Config, json_args: str) -> Pferd:
 
 
 async def run(pferd: Pferd) -> None:
-    # These two functions must run inside the same event loop as the
-    # crawlers, so that any new objects (like Conditions or Futures) can
-    # obtain the correct event loop.
+    # These two functions must run inside the same event loop as the crawlers, so that
+    # any new objects (like Conditions or Futures) can obtain the correct event loop.
     pferd._load_authenticators()
     pferd._load_crawlers()
 
@@ -166,13 +165,13 @@ class SattelAuthenticator(KeyringAuthenticator):
         if self._username is None:
             self._username = await in_daemon_thread(lambda: request("username"))
 
-        # first try looking up the password in the keyring.
-        # do not look it up if it was invalidated - we want to re-prompt in this case
+        # first try looking up the password in the keyring. do not look it up if it was
+        # invalidated - we want to re-prompt in this case
         if self._password is None and not self._password_invalidated:
             self._password = keyring.get_password(self._keyring_name, self._username)
 
-        # if that fails it wasn't saved in the keyring - we need to
-        # read it from the user and store it
+        # if that fails it wasn't saved in the keyring - we need to read it from the
+        # user and store it
         if self._password is None:
             self._password = await in_daemon_thread(lambda: request("password"))
             keyring.set_password(self._keyring_name, self._username, self._password)
@@ -202,7 +201,6 @@ def main():
         config_file_path = Path(config_file_path)  # .expanduser()
     log({"kind": "log", "info": f'got "configFilePath": "{config_file_path}"'})
     config = load_config(config_file_path)
-    # FIXME: why does sattel pause here?
     log({"kind": "log", "info": "loaded pferd config"})
     json_args = request("jsonArgs")
     log({"kind": "log", "info": f'got "jsonArgs": "{json_args}"'})
@@ -211,11 +209,11 @@ def main():
     log({"kind": "log", "info": "run pferd"})
     try:
         if os.name == "nt":
-            # A "workaround" for the windows event loop somehow crashing after
-            # asyncio.run() completes. See:
+            # a workaround for the windows event loop somehow crashing after
+            # asyncio.run() completes. see:
             # https://bugs.python.org/issue39232
             # https://github.com/encode/httpx/issues/914#issuecomment-780023632
-            # TODO Fix this properly
+            # TODO: fix this properly
             loop = asyncio.get_event_loop()
             loop.run_until_complete(run(pferd))
             loop.run_until_complete(asyncio.sleep(1))
@@ -224,6 +222,7 @@ def main():
             asyncio.run(run(pferd))
     except (ConfigOptionError, AuthLoadError, RuleParseError, Exception) as e:
         die(e)
+    log({"kind": "done"})
     # except RuleParseError as e:
     #     TODO: e.pretty_print()
     #     die(e)

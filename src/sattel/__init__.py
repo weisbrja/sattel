@@ -138,14 +138,13 @@ def quiet_pferd():
     def download_bar(self, action: str, path: str) -> ContextManager[ProgressBar]:
         return progress_bar("download", path)
 
-    # def fail(*args, **kwargs):
-    #     raise RuntimeError("Exclusive log output can't be used.")
+    def fail(*args, **kwargs):
+        raise RuntimeError("Pferd probably requested input on it's own.")
 
     pferd_log.print = noop
     pferd_log.download_bar = download_bar
     pferd_log.crawl_bar = crawl_bar
-    # TODO: why does this even run?
-    pferd_log.exclusive_output = noop  # should instead be fail
+    pferd_log.exclusive_output = fail
 
 
 def request(subject: str):
